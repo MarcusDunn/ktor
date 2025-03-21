@@ -9,6 +9,9 @@ import io.ktor.client.plugins.*
 import io.ktor.client.request.*
 import io.ktor.client.statement.*
 import io.ktor.resources.*
+import io.ktor.resources.serialization.ResourcesFormat
+import io.ktor.util.AttributeKey
+import kotlinx.serialization.*
 import io.ktor.client.request.delete as deleteBuilder
 import io.ktor.client.request.get as getBuilder
 import io.ktor.client.request.head as headBuilder
@@ -35,6 +38,7 @@ public suspend inline fun <reified T : Any> HttpClient.get(
 ): HttpResponse {
     val resources = resources()
     return getBuilder {
+        includeUrlTemplate(resources.resourcesFormat, serializer<T>())
         href(resources.resourcesFormat, resource, url)
         builder()
     }
@@ -49,6 +53,7 @@ public suspend inline fun <reified T : Any> HttpClient.post(
 ): HttpResponse {
     val resources = resources()
     return postBuilder {
+        includeUrlTemplate(resources.resourcesFormat, serializer<T>())
         href(resources.resourcesFormat, resource, url)
         builder()
     }
@@ -63,6 +68,7 @@ public suspend inline fun <reified T : Any> HttpClient.put(
 ): HttpResponse {
     val resources = resources()
     return putBuilder {
+        includeUrlTemplate(resources.resourcesFormat, serializer<T>())
         href(resources.resourcesFormat, resource, url)
         builder()
     }
@@ -77,6 +83,7 @@ public suspend inline fun <reified T : Any> HttpClient.delete(
 ): HttpResponse {
     val resources = resources()
     return deleteBuilder {
+        includeUrlTemplate(resources.resourcesFormat, serializer<T>())
         href(resources.resourcesFormat, resource, url)
         builder()
     }
@@ -91,6 +98,7 @@ public suspend inline fun <reified T : Any> HttpClient.patch(
 ): HttpResponse {
     val resources = resources()
     return patchBuilder {
+        includeUrlTemplate(resources.resourcesFormat, serializer<T>())
         href(resources.resourcesFormat, resource, url)
         builder()
     }
@@ -105,6 +113,7 @@ public suspend inline fun <reified T : Any> HttpClient.options(
 ): HttpResponse {
     val resources = resources()
     return optionsBuilder {
+        includeUrlTemplate(resources.resourcesFormat, serializer<T>())
         href(resources.resourcesFormat, resource, url)
         builder()
     }
@@ -119,6 +128,7 @@ public suspend inline fun <reified T : Any> HttpClient.head(
 ): HttpResponse {
     val resources = resources()
     return headBuilder {
+        includeUrlTemplate(resources.resourcesFormat, serializer<T>())
         href(resources.resourcesFormat, resource, url)
         builder()
     }
@@ -133,6 +143,7 @@ public suspend inline fun <reified T : Any> HttpClient.request(
 ): HttpResponse {
     val resources = resources()
     return requestBuilder {
+        includeUrlTemplate(resources.resourcesFormat, serializer<T>())
         href(resources.resourcesFormat, resource, url)
         builder()
     }
@@ -147,6 +158,7 @@ public suspend inline fun <reified T : Any> HttpClient.prepareGet(
 ): HttpStatement {
     val resources = resources()
     return prepareGetBuilder {
+        includeUrlTemplate(resources.resourcesFormat, serializer<T>())
         href(resources.resourcesFormat, resource, url)
         builder()
     }
@@ -161,6 +173,7 @@ public suspend inline fun <reified T : Any> HttpClient.preparePost(
 ): HttpStatement {
     val resources = resources()
     return preparePostBuilder {
+        includeUrlTemplate(resources.resourcesFormat, serializer<T>())
         href(resources.resourcesFormat, resource, url)
         builder()
     }
@@ -175,6 +188,7 @@ public suspend inline fun <reified T : Any> HttpClient.preparePut(
 ): HttpStatement {
     val resources = resources()
     return preparePutBuilder {
+        includeUrlTemplate(resources.resourcesFormat, serializer<T>())
         href(resources.resourcesFormat, resource, url)
         builder()
     }
@@ -189,6 +203,7 @@ public suspend inline fun <reified T : Any> HttpClient.prepareDelete(
 ): HttpStatement {
     val resources = resources()
     return prepareDeleteBuilder {
+        includeUrlTemplate(resources.resourcesFormat, serializer<T>())
         href(resources.resourcesFormat, resource, url)
         builder()
     }
@@ -203,6 +218,7 @@ public suspend inline fun <reified T : Any> HttpClient.preparePatch(
 ): HttpStatement {
     val resources = resources()
     return preparePatchBuilder {
+        includeUrlTemplate(resources.resourcesFormat, serializer<T>())
         href(resources.resourcesFormat, resource, url)
         builder()
     }
@@ -217,6 +233,7 @@ public suspend inline fun <reified T : Any> HttpClient.prepareOptions(
 ): HttpStatement {
     val resources = resources()
     return prepareOptionsBuilder {
+        includeUrlTemplate(resources.resourcesFormat, serializer<T>())
         href(resources.resourcesFormat, resource, url)
         builder()
     }
@@ -231,6 +248,7 @@ public suspend inline fun <reified T : Any> HttpClient.prepareHead(
 ): HttpStatement {
     val resources = resources()
     return prepareHeadBuilder {
+        includeUrlTemplate(resources.resourcesFormat, serializer<T>())
         href(resources.resourcesFormat, resource, url)
         builder()
     }
@@ -245,8 +263,39 @@ public suspend inline fun <reified T : Any> HttpClient.prepareRequest(
 ): HttpStatement {
     val resources = resources()
     return prepareRequestBuilder {
+        includeUrlTemplate(resources.resourcesFormat, serializer<T>())
         href(resources.resourcesFormat, resource, url)
         builder()
+    }
+}
+
+public val URL_TEMPLATE: AttributeKey<String> = AttributeKey<String>("URL_TEMPLATE")
+
+public fun <T : Any> HttpRequestBuilder.includeUrlTemplate(
+    format: ResourcesFormat,
+    serializer: KSerializer<T>,
+) {
+    attributes.put(URL_TEMPLATE, urlTemplate(format, serializer))
+}
+
+internal fun <T> urlTemplate(
+    format: ResourcesFormat,
+    serializer: KSerializer<T>,
+): String {
+    val path = format.encodeToPathPattern(serializer)
+    val query = format.encodeToQueryParameters(serializer)
+    return buildString {
+        append(path)
+        for ((i, parameter) in query.withIndex()) {
+            append(if (i == 0) '?' else '&')
+            append(parameter.name)
+            append("={")
+            append(parameter.name)
+            if (parameter.isOptional) {
+                append('?')
+            }
+            append('}')
+        }
     }
 }
 
