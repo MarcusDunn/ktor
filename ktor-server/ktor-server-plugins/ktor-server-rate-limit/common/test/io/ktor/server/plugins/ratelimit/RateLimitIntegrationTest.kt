@@ -10,6 +10,7 @@ import io.ktor.server.application.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import io.ktor.server.testing.*
+import io.ktor.util.*
 import io.ktor.util.pipeline.*
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -58,6 +59,33 @@ class RateLimitIntegrationTest {
 
         assertEquals(HttpStatusCode.TooManyRequests, client.post("/endpoint").status)
     }
+
+    @Test
+    fun requestKeyHasAccessToPrincipalWhenAuthenticateWrapsRateLimit() = testApplication {
+        install(RateLimit) {
+            register(RateLimitName("per-user")) {
+                rateLimiter(limit = 1, refillPeriod = 1000.seconds)
+                requestKey { call -> call.attributes[MockPrincipalKey] }
+            }
+        }
+
+        routing {
+            mockAuthenticate {
+                rateLimit(RateLimitName("per-user")) {
+                    post("/endpoint") {
+                        call.respond(HttpStatusCode.OK)
+                    }
+                }
+            }
+        }
+
+        suspend fun post(user: String): HttpStatusCode =
+            client.post("/endpoint") { header(HttpHeaders.Authorization, user) }.status
+
+        assertEquals(HttpStatusCode.OK, post("user1"))
+        assertEquals(HttpStatusCode.TooManyRequests, post("user1"))
+        assertEquals(HttpStatusCode.OK, post("user2"))
+    }
 }
 
 private val MockAuthenticatePhase = PipelinePhase("Authenticate")
@@ -69,10 +97,17 @@ private object MockAuthenticationHook : Hook<suspend (ApplicationCall) -> Unit> 
     }
 }
 
+private val MockPrincipalKey = AttributeKey<String>("MockPrincipal")
+
 private val MockAuthenticationInterceptors = createRouteScopedPlugin("MockAuthenticationInterceptors") {
     on(MockAuthenticationHook) { call ->
         if (call.isHandled) return@on
-        call.respond(HttpStatusCode.Unauthorized)
+        val credentials = call.request.headers[HttpHeaders.Authorization]
+        if (credentials == null) {
+            call.respond(HttpStatusCode.Unauthorized)
+        } else {
+            call.attributes.put(MockPrincipalKey, credentials)
+        }
     }
 }
 
