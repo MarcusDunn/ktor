@@ -10,11 +10,18 @@ import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.util.collections.*
 import io.ktor.util.date.*
+import io.ktor.util.pipeline.*
 import kotlinx.coroutines.*
 
-private object PluginsPhase : Hook<suspend (ApplicationCall) -> Unit> {
+private object RateLimitHook : Hook<suspend (ApplicationCall) -> Unit> {
+    private val RateLimitPhase = PipelinePhase("RateLimit")
+
+    // The phase is inserted after Plugins with the same relation the Authentication plugin uses for its
+    // Authenticate phase, so route pipeline merging orders rate limiting and authentication
+    // by their nesting order in the routing DSL.
     override fun install(pipeline: ApplicationCallPipeline, handler: suspend (ApplicationCall) -> Unit) {
-        pipeline.intercept(ApplicationCallPipeline.Plugins) { handler(call) }
+        pipeline.insertPhaseAfter(ApplicationCallPipeline.Plugins, RateLimitPhase)
+        pipeline.intercept(RateLimitPhase) { handler(call) }
     }
 }
 
@@ -40,7 +47,7 @@ private fun PluginBuilder<RateLimitInterceptorsConfig>.rateLimiterPluginBuilder(
     val registry = application.attributes.computeIfAbsent(RateLimiterInstancesRegistryKey) { ConcurrentMap() }
     val clearOnRefillJobs = ConcurrentMap<ProviderKey, Job>()
 
-    on(PluginsPhase) { call ->
+    on(RateLimitHook) { call ->
         providers.forEach { provider ->
             if (call.isHandled) return@on
 

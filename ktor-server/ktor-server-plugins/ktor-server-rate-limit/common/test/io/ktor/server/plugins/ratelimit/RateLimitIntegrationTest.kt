@@ -40,7 +40,7 @@ class RateLimitIntegrationTest {
     }
 
     @Test
-    fun rateLimitRunsBeforeMockAuthWhenAuthenticateWrapsRateLimit() = testApplication {
+    fun mockAuthRunsBeforeRateLimitWhenAuthenticateWrapsRateLimit() = testApplication {
         install(RateLimit) {
             register(RateLimitName("block-all")) {
                 rateLimiter(limit = 0, refillPeriod = 1.seconds)
@@ -57,7 +57,11 @@ class RateLimitIntegrationTest {
             }
         }
 
-        assertEquals(HttpStatusCode.TooManyRequests, client.post("/endpoint").status)
+        assertEquals(HttpStatusCode.Unauthorized, client.post("/endpoint").status)
+        assertEquals(
+            HttpStatusCode.TooManyRequests,
+            client.post("/endpoint") { header(HttpHeaders.Authorization, "user1") }.status,
+        )
     }
 
     @Test
